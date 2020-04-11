@@ -180,7 +180,7 @@ function curl_upload_chunk() {
 	current_range_start=$(($2*${max_chunk_size}))
 	current_range_end=$((${current_range_start}+${max_chunk_size}-1))
 
-	if [ ${current_range_end} -gt ${filesize} ]; then
+	if [ ${current_range_end} -ge ${filesize} ]; then
 		current_range_end=$((${filesize}-1))
 	fi
 	current_range_length=$((${current_range_end}-${current_range_start}+1))
@@ -193,7 +193,7 @@ function curl_upload_chunk() {
 		--request PUT \
 		--output /dev/null \
 		--write-out "%{http_code}" \
-                --header "Authorization: Bearer ${api_access_token}" \
+		--header "Authorization: Bearer ${api_access_token}" \
 		--header "Accept: application/json; odata.metadata=none" \
 		--header "Content-Length: ${current_range_length}" \
 		--header "Content-Range: bytes ${current_range_start}-${current_range_end}/${filesize}" \
@@ -341,6 +341,18 @@ function onedrive_get_or_create_folder() {
 # --- FILE UPLOAD --- #
 # ------------------- #
 
+function compute_upload_speed_so_far() {
+	local current_time=$(date "+%s")
+	local time_taken_so_far=$((${current_time} - ${upload_start_time}))
+
+	local uploaded_size_so_far=$((${current_chunk} * ${max_chunk_size} + ${max_chunk_size}))
+	if [ ${uploaded_size_so_far} -gt ${filesize} ]; then
+		uploaded_size_so_far=${filesize}
+	fi
+	# Return upload speed in MB/s with the precision of 2 decimal places
+	bc <<< "scale=2; ${uploaded_size_so_far} / ${time_taken_so_far} / 1024 / 1024"
+}
+
 function onedrive_upload_file_simple() {
 	if [ ! -f "${file}" ]; then
 		error "An error has occurred while uploading '${file}' (File does not exist)"
@@ -361,6 +373,8 @@ function onedrive_upload_file_chunked() {
 	upload_url=$(onedrive_request_upload_session "${api_folder_id}")
 	exit_on_error
 
+	local upload_start_time=$(date "+%s")
+	local n_chunks=$((${filesize} / ${max_chunk_size}))
 	local current_chunk=0
 	local status_code=""
 
@@ -369,7 +383,7 @@ function onedrive_upload_file_chunked() {
 		api_access_token=$(onedrive_acquire_access_token)
 		exit_on_error
 
-		debug "Uploading chunk ${current_chunk} of '${file}'"
+		debug "Uploading chunk ${current_chunk}/${n_chunks} of '${file}'"
 
 		local retry_count=0
 		status_code=""
@@ -399,6 +413,8 @@ function onedrive_upload_file_chunked() {
 			retry_count=$((retry_count+1))
 		done
 		debug "Upload of chunk ${current_chunk} of '${file}' finished (Code: ${status_code})"
+		debug "Upload speed so far: $(compute_upload_speed_so_far) MB/s"
+		debug "========================================================"
 
 		if [ ! "${status_code}" == "200" ] && \
 				[ ! "${status_code}" == "201" ] && \
