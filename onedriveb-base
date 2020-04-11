@@ -1,6 +1,6 @@
-api_auth_url="https://login.microsoftonline.com/common/oauth2/token"
+api_access_token_url="https://login.microsoftonline.com/common/oauth2/v2.0/token"
 api_discovery_url="https://api.office.com/discovery/v2.0/me/services"
-api_discovery_id="https://api.office.com/discovery/"
+api_uri="https://graph.microsoft.com/v1.0/me"
 get_json_value="cut -d= -f2-"
 curl_opts="--silent --retry ${http_retries} --retry-delay 10 -g"
 
@@ -36,21 +36,6 @@ function urlencode() {
 # ------------------ #
 # --- cURL calls --- #
 # ------------------ #
-function curl_discover_uri() {
-	local api_access_token=$(onedrive_acquire_access_token ${api_discovery_id})
-	exit_on_error
-
-	local api_parsed_json_result=$(curl \
-	    ${curl_opts} \
-	    --get \
-            --header "Authorization: Bearer ${api_access_token}" \
-            --header "Accept: application/json; odata.metadata=none" \
-	    --data-urlencode "\$select=serviceEndpointUri,serviceResourceId" \
-	    --data-urlencode "\$filter=capability eq 'MyFiles' and serviceApiVersion eq 'v2.0'" \
-	    "${api_discovery_url}" | "${json_parser}")
-	api_uri=$(echo "${api_parsed_json_result}" | grep "serviceEndpointUri" | ${get_json_value})
-	api_resource_id=$(echo "${api_parsed_json_result}" | grep "serviceResourceId" | ${get_json_value})
-}
 
 # $1=folder id
 # $2=folder name
@@ -114,8 +99,7 @@ function curl_get_access_token() {
 	    --data-urlencode "redirect_uri=${api_reply_url}" \
 	    --data-urlencode "refresh_token=$1" \
 	    --data-urlencode "grant_type=refresh_token" \
-	    --data-urlencode "resource=$2" \
-	    ${api_auth_url} | "${json_parser}"
+	    ${api_access_token_url} | "${json_parser}"
 }
 
 # $1=folder_id
@@ -132,6 +116,7 @@ function curl_upload_file() {
 		url="${api_uri}/drive/items/${folder_id}/children/${url_filename}/content"
 		debug "Uploading '${file}' as '${remote_filename}' into ${folder_id}"
 	fi
+	debug "URL used for uploading: ${url}"
 
 	curl \
 		${curl_opts} \
@@ -216,10 +201,10 @@ function curl_upload_chunk() {
 		"${1}"
 }
 
-
 # ------------------------ #
 # --- TOKEN MANAGEMENT --- #
 # ------------------------ #
+
 function filesystem_load_refresh_token() {
 	if [ ! -f "${refresh_token_file}" ]; then
 		error "Refresh token not found, please complete the authorization process first"
@@ -252,7 +237,7 @@ function onedrive_acquire_access_token() {
 	old_refresh_token=$(filesystem_load_refresh_token)
 	exit_on_error
 
-	api_parsed_json_result=$(curl_get_access_token "${old_refresh_token}" "$1")
+	api_parsed_json_result=$(curl_get_access_token "${old_refresh_token}")
 
 	new_refresh_token=$(echo "${api_parsed_json_result}" | grep "refresh_token" | ${get_json_value})
 
@@ -271,6 +256,7 @@ function onedrive_acquire_access_token() {
 # --------------------------------- #
 # --- UPLOAD SESSION MANAGEMENT --- #
 # --------------------------------- #
+
 # $1=file
 function filesystem_get_filesize() {
 	if [[ $(uname) == "Darwin" ]]; then
@@ -300,6 +286,7 @@ function onedrive_request_upload_session() {
 # ------------------------ #
 # --- FOLDER TRAVERSAL --- #
 # ------------------------ #
+
 # $1=folder id
 # $2=folder name
 function onedrive_find_folder_id() {
@@ -331,7 +318,7 @@ function onedrive_get_or_create_folder() {
 	local current_folder_id="${api_folder_id}"
 	local next_folder_id
 
-	api_access_token=$(onedrive_acquire_access_token ${api_resource_id})
+	api_access_token=$(onedrive_acquire_access_token)
 	exit_on_error
 
 	while [[ $# -ge 1 ]]; do
@@ -353,19 +340,20 @@ function onedrive_get_or_create_folder() {
 # ------------------- #
 # --- FILE UPLOAD --- #
 # ------------------- #
+
 function onedrive_upload_file_simple() {
 	if [ ! -f "${file}" ]; then
 		error "An error has occurred while uploading '${file}' (File does not exist)"
 	fi
 
-	api_access_token=$(onedrive_acquire_access_token ${api_resource_id})
+	api_access_token=$(onedrive_acquire_access_token)
 	exit_on_error
 
 	curl_upload_file "${api_folder_id}"
 }
 
 function onedrive_upload_file_chunked() {
-	api_access_token=$(onedrive_acquire_access_token ${api_resource_id})
+	api_access_token=$(onedrive_acquire_access_token)
 	exit_on_error
 
 	debug "Requesting upload session for '${file}'"
@@ -378,7 +366,7 @@ function onedrive_upload_file_chunked() {
 
 	while [ $((${current_chunk}*${max_chunk_size})) -lt ${filesize} ]; do
 		# Acquire a token for each chunk to ensure that it has not yet expired. This WILL slow things down a little bit.
-		api_access_token=$(onedrive_acquire_access_token ${api_resource_id})
+		api_access_token=$(onedrive_acquire_access_token)
 		exit_on_error
 
 		debug "Uploading chunk ${current_chunk} of '${file}'"
