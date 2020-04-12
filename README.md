@@ -47,44 +47,28 @@ After the authorization process has successfully completed you can upload files.
 Getting started (OneDrive for Business)
 ---------------
 
-Before you can use this tool, create an application in the [Microsoft Azure Management Portal](https://manage.windowsazure.com) to generate your custom Client ID and Client secret.
+Before you can use this tool, create an application in the [Microsoft Azure Management Portal](https://manage.windowsazure.com) to generate your custom Client ID and Reply URL.
 
-    1. Navigate to Active directory
-    2. Select your Directory
-    3. Navigate to Applications tab
-    4. Press Add
-    5. Select "Add an application my organization developing"
-    6. Choose Name and select "Web application and/or web API"
-    7. In a "Sign-on URL" write https://login.microsoftonline.com/
-    8. In an "APP ID URI" write https://onedrive.live.com/about/business/
-    9. Submit form
-    10. Now open your new application and select Configure tab
-    11. Change "Reply URL" field to https://onedrive.live.com/about/business/
-    12. Add an application key. Select 1 year key, 2 years key will not work. Press Save and copy the generated Secret
-    13. Also copy your "Client ID"
-    14. In a "Permissions to other applications" press "Add application"
-    15. Select "Office 365 SharePoint Online" and "Windows Azure Active Directory"
-    16. Grant "Sign in and read user profile" delegated permission to "Windows Azure Active Directory"
-    17. Grant "Read user files" and "Read and write user files" delegated permissions to "Office 365 SharePoint Online"
-    18. Save changes
+1. Navigate to *Manage Azure Active Directory*.
+2. Navigate to the *App registrations* tab on the left pane, and then press *New registration*. Here, you can type any name that you want for your application. But you **must** choose the *MultiTenant* option, and **not** the *SingleTenant* option. This is very important, as the MultiTenant option will allow the scripts to easily find the application on OneDrive.
+3. On the overview page of your created application, please note down the Client ID (which can also be referred to as the Application ID).
+4. Navigate to the *Authentication* tab on the left pane, and then press *Add a platform*. Here, we should choose *Mobile and desktop applications*, because our scripts will run locally on a desktop environment. Now, select one of the given *Redirect URIs*, and note it down, because that will be used as the Reply URL for the scripts.
 
-Afterwards you should have three components of authorization process:
+Afterwards you should have these two components of authorization process:
 
     Client ID: a66d1076-4c04-4a33-3bb2-2578c4891886
-    Secret: x73LaIRCimtjiiw/cuHA000Ozwcf4nz1Ovcpi0xUCHI=
-    Reply URL: https://onedrive.live.com/about/business/
+    Reply URL: https://login.live.com/oauth20_desktop.srf
 
 Please insert these values in the matching variables in `onedriveb.cfg`:
 
     export api_client_id="a66d1076-4c04-4a33-3bb2-2578c4891886"
-    export api_client_secret="x73LaIRCimtjiiw/cuHA000Ozwcf4nz1Ovcpi0xUCHI="
-    export api_reply_url="https://onedrive.live.com/about/business/"
+    export api_reply_url="https://login.live.com/oauth20_desktop.srf"
 
-After the initial configuration you must authorize the app to use your OneDrive for Business account. Run
+After the initial configuration you must authorize the app to use your OneDrive for Business account. You will only need to do this once, because later on, the scripts will use the refresh token instead. To authorize the app, run:
 
     $ ./onedriveb-authorize
 
-and follow the steps. You will need a web browser.
+and follow the steps. You will need a web browser, which can be run from anywhere (and not necessarily on the same machine that the upload scripts will run in).
 
 After the authorization process has successfully completed you can upload files.
 If you see error `AADSTS70002: Error validating credentials. AADSTS50012: Invalid client secret is provided`, try to add a new key and use new secret.
@@ -99,6 +83,14 @@ To upload a single file simply type
 
     # OneDrive for Business
     $ ./onedriveb-upload file1
+
+For uploading a large file, you should use the debug flag to get more progress info
+
+    # OneDrive Personal
+    $ ./onedrive-upload -d file1
+
+    # OneDrive for Business
+    $ ./onedriveb-upload -d file1
 
 You can also upload multiple files, either by explicitly specifying each one
 
@@ -218,15 +210,29 @@ When you start the upload of more than one file, the script will start up to `ma
 
 ### Configure threshold for session based upload
 
-For small files the script uses the [simple upload](https://dev.onedrive.com/items/upload_put.htm) of the api. For files that are larger than 100 MiB the script uses the [session based upload](https://dev.onedrive.com/items/upload_large_files.htm).
+For small files the script uses the [simple upload](https://dev.onedrive.com/items/upload_put.htm) of the api. For files that are larger than 4 MiB the script uses the [session based upload](https://dev.onedrive.com/items/upload_large_files.htm).
 
-If you want to use the session based upload for files smaller than 100 MiB you can change the value of `max_simple_upload_size` to any positive value smaller than 104857600:
+If you want to use the session based upload for files smaller than 4 MiB you can change the value of `max_simple_upload_size` to any positive value smaller than 4194304:
 
-    export max_simple_upload_size=52428800
+    export max_simple_upload_size=2097152
 
-You can also change the value of `max_chunk_size` to any positive value smaller than 62914560, if you want to use smaller or larger chunks than the default:
+You can also change the value of `max_chunk_size` to any positive value. Note that the smaller the chunk size, the less efficient the upload will be, thus can lead to lower upload speed. But with larger chunk size, you might risk of not receiving any outputs at all, since it can take a very long time for a chunk to finish.
+
+if you want to use smaller or larger chunks than the default:
 
     export max_chunk_size=62914560
+
+Development
+-----------
+
+Some good articles to read before starting on development:
+- [Authentication with Microsft Graph API](https://docs.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth)
+- [Simple upload of small files](https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_put_content)
+- [Chucked upload of large files](https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_createuploadsession)
+
+In order to extend the repository with more features, please consult Microsoft documentation:
+- [https://docs.microsoft.com/en-us/onedrive/developer/rest-api/](https://docs.microsoft.com/en-us/onedrive/developer/rest-api/)
+
 
 Contributors
 ------------
